@@ -1,4 +1,8 @@
-# İşletmem Muhasebe · 0.5.0
+# İşletmem Muhasebe · 0.6.0
+
+**Bilgisayar kapalıyken de telefonundan kullanmak için [internet sürümünü kur](docs/internet-kurulumu.md).** Telefon ve bilgisayar aynı internet adresine giriş yapar.
+
+[Render hesabında kur](https://render.com/deploy?repo=https://github.com/duruarven/muhasebe) — kalıcı diskli ücretli servis; kurulumdan önce sağlayıcının gösterdiği ücreti incele.
 
 Windows x64 için Türkçe, yerel çalışan ön muhasebe uygulaması. Klasik mavi masaüstü arayüzü, modül düğmeleri, cari bakiye paneli ve satır tabanlı hesap ekstresi.
 
@@ -141,7 +145,7 @@ Fiziksel yazıcı ve dış PDF/resim görüntüleyicisi otomatik test kapsamı d
 
 Cari tahsilatında kayıt öncesi ve sonrası net bakiye gösterilir. Cari ekranından açılan tahsilatta cari seçimi zorunludur. Fazla tahsilat negatif bakiye ve “Borcumuz var” olarak görünür. Faturasız tahsilat genel cari bakiyesini azaltır; belirli faturanın kalanını azaltmak için ilişkili fatura seçilir. Mevcut bağımsız kasa kayıtları, düzenleme ekranında doğru cariye bağlanabilir; aynı tahsilatı tekrar girmeyin.
 
-## 0.5.0 — Telefon ve bilgisayarda aynı kayıtlar
+## 0.5.0 — Aynı yerel ağda kullanım
 
 Android Chrome veya iPhone Safari üzerinden aynı Wi-Fi ağında kullanılır. Ayrı bir veri kopyası oluşturulmaz; cari, satış, stok ve tahsilatlar açık Windows programının aynı Store nesnesinden okunur ve aynı JSON dosyasına yazılır. Masaüstü ve telefon, form açık değilken beş saniyede bir değişiklikleri kontrol eder. Düzenlenen form otomatik yenilemeyle silinmez.
 

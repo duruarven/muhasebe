@@ -75,7 +75,7 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
     await page.setViewportSize({ width: 390, height: 844 });
     if (process.env.UI_MOBILE_SCREENSHOT_PATH) await page.screenshot({ path: process.env.UI_MOBILE_SCREENSHOT_PATH, fullPage: true });
     await page.getByRole("button", { name: "Dosya", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Mobil oturumu kapat", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Oturumu kapat", exact: true }).click();
     await page.getByRole("button", { name: "Bağlan", exact: true }).waitFor();
     assert.deepEqual(errors, []);
     console.log("MOBILE UI PASS: gerçek HTTP girişi, telefon boyutlarında satış, tahsilat, ortak kalıcı kayıtlar, masaüstü değişikliğini otomatik okuma ve çıkış.");

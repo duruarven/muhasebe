@@ -350,7 +350,8 @@ function renderAppMenus() {
       ["Verileri yedekle", "backup"],
       ["Listeyi yenile", "refresh"],
       ...(window.accounting.mobileStatus ? [["Telefondan bağlan · Mobil erişim", "mobile-access"]] : []),
-      ...(window.accounting.logout ? [["Mobil oturumu kapat", "mobile-logout"]] : []),
+      ...(window.accounting.logout ? [["Oturumu kapat", "mobile-logout"]] : []),
+      ...(window.accounting.importBackup ? [["Masaüstü yedeğini aktar (boş sistem)", "import-backup"]] : []),
     ]) +
     dropdown("Tanımlar", "definitions", [
       ["Yeni cari kart", "new-contact"],
@@ -973,6 +974,11 @@ function invoiceDetail(id) {
   );
 }
 async function action(name, el) {
+  if (name === "import-backup") {
+    const imported = await api(window.accounting.importBackup());
+    if (imported) { data = imported; contactId = null; render(); notice("Yedek ortak sisteme aktarıldı."); }
+    return;
+  }
   if (name === "mobile-access") return mobileAccess();
   if (name === "mobile-start" || name === "mobile-stop") {
     await api(name === "mobile-start" ? window.accounting.mobileStart() : window.accounting.mobileStop());

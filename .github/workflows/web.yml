@@ -1,0 +1,26 @@
+name: İnternet sürümü testleri
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: İnternet sürümünü HTTPS üzerinden doğrula
+        run: npm run test:hosted
+        env:
+          UI_BROWSER_PATH: /usr/bin/google-chrome
+      - name: Telefon görünümünü doğrula
+        run: npm run test:mobile
+        env:
+          UI_BROWSER_PATH: /usr/bin/google-chrome

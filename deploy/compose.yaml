@@ -1,0 +1,30 @@
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    environment:
+      APP_ORIGIN: https://${APP_DOMAIN:?Alan adını girin}
+      APP_PASSWORD: ${APP_PASSWORD:?En az 16 karakterlik şifre girin}
+      DATA_DIR: /data
+    volumes:
+      - accounting:/data
+    expose:
+      - "3000"
+  https:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Alan adını girin}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+volumes:
+  accounting:
+  certificates:
+  caddy_config:

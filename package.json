@@ -1,6 +1,6 @@
 {
   "name": "isletmem-muhasebe",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "İşletmem Windows ön muhasebe uygulaması",
   "author": "İşletmem",
   "private": true,
@@ -12,7 +12,9 @@
     "pack:linux": "electron-builder --linux dir",
     "test:ui": "node scripts/ui-smoke.cjs",
     "test:desktop": "node scripts/ui-smoke.cjs --electron",
-    "test:mobile": "node scripts/mobile-smoke.cjs"
+    "test:mobile": "node scripts/mobile-smoke.cjs",
+    "start:web": "node src/web-server.js",
+    "test:hosted": "node scripts/hosted-smoke.cjs"
   },
   "build": {
     "appId": "tr.isletmem.muhasebe",
