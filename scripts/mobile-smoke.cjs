@@ -46,6 +46,30 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
     // A desktop write appears on the phone without copying/importing any records.
     store.add("transactions", { contactId: store.data.contacts[0].id, accountId: store.data.accounts[0].id, type: "income", amount: "100", description: "Masaüstünden tahsilat", date: new Date().toISOString().slice(0, 10) });
     await page.locator(".balance-value").getByText("599,99", { exact: true }).waitFor({ timeout: 12000 });
+    // Hold an old background read until after a new receipt has been saved.
+    let releaseRead, observedRead;
+    const release = new Promise(resolve => { releaseRead = resolve; });
+    const observed = new Promise(resolve => { observedRead = resolve; });
+    await page.route("**/api/read", async route => {
+      const response = await route.fetch();
+      observedRead();
+      await release;
+      await route.fulfill({ response });
+    }, { times: 1 });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await observed;
+    await page.getByRole("button", { name: "↓ Tahsilat al", exact: true }).click();
+    await dlg.getByLabel("Kasa / banka").selectOption({ label: "Ortak kasa" });
+    await dlg.getByLabel("Tutar (₺)").fill("0,01");
+    await dlg.getByLabel("Açıklama", { exact: false }).fill("Geciken yenileme sırasında tahsilat");
+    await dlg.getByRole("button", { name: "Hareketi kaydet", exact: true }).click();
+    await dlg.waitFor({ state: "hidden" });
+    assert.equal(await page.locator(".balance-value").textContent(), "599,98");
+    const staleResponse = page.waitForResponse(response => response.url().endsWith("/api/read"));
+    releaseRead();
+    await staleResponse;
+    await page.waitForFunction(() => !refreshing);
+    assert.equal(await page.locator(".balance-value").textContent(), "599,98");
     await noOverflow();
     for (const width of [360, 430, 768]) { await page.setViewportSize({ width, height: 844 }); await noOverflow(); }
     await page.setViewportSize({ width: 390, height: 844 });

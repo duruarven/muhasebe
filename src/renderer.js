@@ -1263,8 +1263,10 @@ let refreshing = false;
 async function refreshSharedData() {
   if (refreshing || !data || modal.open || document.hidden || document.activeElement?.matches("input,select,textarea")) return;
   refreshing = true;
+  const before = data;
   try {
     const next = await api(window.accounting.read());
+    if (data !== before) return; // A newer local save wins over an older in-flight read.
     if (modal.open || document.hidden || document.activeElement?.matches("input,select,textarea")) return;
     if (JSON.stringify(next) !== JSON.stringify(data)) {
       data = next;
