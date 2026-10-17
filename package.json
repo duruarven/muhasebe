@@ -1,0 +1,23 @@
+{
+  "name": "isletmem-muhasebe",
+  "version": "0.1.0",
+  "description": "İşletmem Windows ön muhasebe uygulaması",
+  "author": "İşletmem",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist:win": "electron-builder --win nsis --x64",
+    "pack:linux": "electron-builder --linux dir"
+  },
+  "build": {
+    "appId": "tr.isletmem.muhasebe",
+    "productName": "İşletmem Muhasebe",
+    "files": ["src/**/*", "package.json"],
+    "directories": {"output": "dist"},
+    "win": {"target": "nsis", "signAndEditExecutable": false},
+    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true}
+  },
+  "devDependencies": {"electron": "^42.0.0", "electron-builder": "^26.0.0"}
+}

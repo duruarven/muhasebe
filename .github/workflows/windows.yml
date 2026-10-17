@@ -1,0 +1,43 @@
+name: Windows kurulum paketi
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist:win -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Kurulum dosyasını adlandır
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'dist/*Setup*.exe' | Select-Object -First 1
+          if (!$installer) { throw 'Windows kurulum dosyası bulunamadı.' }
+          Copy-Item $installer.FullName 'dist/Isletmem-Muhasebe-Setup.exe'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Isletmem-Muhasebe-Windows
+          path: dist/Isletmem-Muhasebe-Setup.exe
+          if-no-files-found: error
+      - name: İndirme sayfasını yayımla
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "v$version-build.$env:GITHUB_RUN_NUMBER"
+          gh release create $tag 'dist/Isletmem-Muhasebe-Setup.exe' --target $env:GITHUB_SHA --title "İşletmem Muhasebe $version" --notes 'Windows x64 ön muhasebe uygulaması. Kurulum dosyası kod imzalı değildir. Resmi e-Fatura entegrasyonu içermez.' --latest
+          if ($LASTEXITCODE -ne 0) { throw 'İndirme sayfası yayımlanamadı.' }
