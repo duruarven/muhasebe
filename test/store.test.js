@@ -728,3 +728,24 @@ test("Barkod ve cari kartı iskonto bilgileri saklanır; barkod başka kartta yi
     /Barkod/,
   );
 });
+
+test("Genel cari tahsilatı kuruşuyla düşer; fazla tahsilat, düzenleme ve silme ters kaydı doğru", (t) => {
+  const s = setup(t), c = contact(s), a = account(s), p = product(s);
+  invoice(s, c, p); // 240,00 TL
+  const receipt = payment(s, c, a, { amount: "100,01" });
+  assert.equal(D.balance(s.data, c.id), 13999);
+  payment(s, c, a, { amount: "139,99" });
+  assert.equal(D.balance(s.data, c.id), 0);
+  const advance = payment(s, c, a, { amount: "0,29" });
+  assert.equal(D.balance(s.data, c.id), -29);
+  s.update("transactions", receipt.id, {
+    ...receipt, amount: "100,02",
+  });
+  assert.equal(D.balance(s.data, c.id), -30);
+  s.remove("transactions", advance.id);
+  assert.equal(D.balance(s.data, c.id), -1);
+  const reloaded = new Store(s.file);
+  assert.equal(D.balance(reloaded.data, c.id), -1);
+  assert.equal(reloaded.data.transactions.reduce((sum, t) => sum + t.amount, 0), 24001);
+  assert.deepEqual(D.auditContact(reloaded.data, c.id).issues, []);
+});

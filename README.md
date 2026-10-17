@@ -1,4 +1,4 @@
-# İşletmem Muhasebe · 0.4.0
+# İşletmem Muhasebe · 0.4.1
 
 Windows x64 için Türkçe, yerel çalışan ön muhasebe uygulaması. Klasik mavi masaüstü arayüzü, modül düğmeleri, cari bakiye paneli ve satır tabanlı hesap ekstresi.
 
@@ -136,3 +136,7 @@ Sabit para birimi seçiliyse tüm satırlar üstteki para birimini kullanır. Ka
 Önce birim fiyat TL'ye kuruş hassasiyetinde çevrilir, ardından miktarla çarpılır. İskontolar cari → 1 → 2 → 3 sırasında, her adımda kuruşa yuvarlanarak uygulanır. Oranlar toplanmaz. KDV dahil fiyatta KDV indirgenmiş toplamdan ayrıştırılır; KDV hariç fiyatta net tutara eklenir. Toplam Tutar ve İskonto Tutarı alanları KDV hariç TL değerleridir; genel toplam KDV dahildir.
 
 Fiziksel yazıcı ve dış PDF/resim görüntüleyicisi otomatik test kapsamı dışındadır. Windows masaüstü testinde gerçek kayıt/IPC, ek belge seçimi (test dosyasına yönlendirilmiş iletişim kutusu), peşin kayıt, döviz/iskonto hesabı ve F6/F8 akışı çalıştırılır.
+
+## 0.4.1 tahsilat kontrolü
+
+Cari tahsilatında kayıt öncesi ve sonrası net bakiye gösterilir. Cari ekranından açılan tahsilatta cari seçimi zorunludur. Fazla tahsilat negatif bakiye ve “Borcumuz var” olarak görünür. Faturasız tahsilat genel cari bakiyesini azaltır; belirli faturanın kalanını azaltmak için ilişkili fatura seçilir. Mevcut bağımsız kasa kayıtları, düzenleme ekranında doğru cariye bağlanabilir; aynı tahsilatı tekrar girmeyin.

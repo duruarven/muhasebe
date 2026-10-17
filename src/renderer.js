@@ -380,7 +380,7 @@ function contactSummary(c) {
   const credit =
     rows.reduce((n, r) => n + r.credit, 0) -
     Math.max(0, -(c.openingBalance || 0));
-  return `<div class="contact-summary"><div class="balance-card"><div class="balance-caption"><span>${esc(c.code || "CARİ")}: ${esc(c.name.toLocaleUpperCase("tr"))}</span><small>CARİ HESAP</small></div><div class="balance-row"><label>Toplam Bakiye</label><div class="balance-value">${numberFormat(Math.abs(balance))}</div><div class="currency-box">TL</div></div><div class="balance-row">${button("Kart Seçimi", "back", "small")}<div class="balance-state">HESAP DURUMU: ${balance > 0 ? "CARİ BORÇLU" : balance < 0 ? "CARİ ALACAKLI" : "HESAP KAPALI"}</div></div></div><div class="balance-matrix"><table aria-label="Cari bakiye özeti"><thead><tr><th>Bakiyeler</th><th class="num">TL</th></tr></thead><tbody>${[
+  return `<div class="contact-summary"><div class="balance-card"><div class="balance-caption"><span>${esc(c.code || "CARİ")}: ${esc(c.name.toLocaleUpperCase("tr"))}</span><small>CARİ HESAP</small></div><div class="balance-row"><label>Toplam Bakiye</label><div class="balance-value">${numberFormat(balance)}</div><div class="currency-box">TL</div></div><div class="balance-row">${button("Kart Seçimi", "back", "small")}<div class="balance-state">HESAP DURUMU: ${balance > 0 ? "CARİ BORÇLU" : balance < 0 ? "CARİ ALACAKLI" : "HESAP KAPALI"}</div></div></div><div class="balance-matrix"><table aria-label="Cari bakiye özeti"><thead><tr><th>Bakiyeler</th><th class="num">TL</th></tr></thead><tbody>${[
     ["DEVİR", c.openingBalance || 0],
     ["Borç", debit],
     ["Alacak", credit],
@@ -802,7 +802,7 @@ function paymentForm(
       : type === "income"
         ? "Tahsilat / gelir kaydı"
         : "Ödeme / gider kaydı",
-    `<form><div class="form-grid">${select("contactId", "Cari hesap", [["", "Bağımsız işlem (cari seçme)"], ...data.contacts.map((c) => [c.id, c.name])], cid, false)}${select(
+    `<form><div class="form-grid">${select("contactId", "Cari hesap", [["", "Bağımsız işlem (cari seçme)"], ...data.contacts.map((c) => [c.id, c.name])], cid, Boolean(cid))}${select(
       "type",
       "İşlem yönü",
       [
@@ -810,7 +810,7 @@ function paymentForm(
         ["expense", "Ödeme / gider (kasadan çıkış)"],
       ],
       type,
-    )}${select("accountId", "Kasa / banka", [["", "Hesap seçin"], ...data.accounts.map((a) => [a.id, a.name])], old?.accountId || "")}${input("amount", "Tutar (₺)", old ? raw(old.amount) : inv ? raw(inv.amount - D.paid(data, inv.id)) : "", "text", true, 'inputmode="decimal"')}${input("date", "İşlem tarihi", old?.date || today(), "date")}${input("description", "Açıklama", old ? old.description : inv ? `${inv.number} ${type === "income" ? "tahsilatı" : "ödemesi"}` : "")}${select("invoiceId", "İlişkili fatura (isteğe bağlı)", [["", "Faturasız / avans"]], "", false)}${input("receiptNo", "Fiş numarası (boşsa otomatik)", old?.receiptNo || "", "text", false)}${input("documentNo", "Belge numarası", old?.documentNo || "", "text", false)}${input("group", "İşlem grubu", old?.group || "", "text", false)}${input("deliveryNo", "İrsaliye numarası", old?.deliveryNo || "", "text", false)}</div><p class="form-note">Cari seçildiğinde hem cari hem kasa/banka bakiyesi güncellenir. Fatura seçildiğinde faturanın kalan tutarı da azalır. Faturasız kayıt avans veya genel cari ödemesi olarak izlenir.</p>${footer("Hareketi kaydet")}</form>`,
+    )}${select("accountId", "Kasa / banka", [["", "Hesap seçin"], ...data.accounts.map((a) => [a.id, a.name])], old?.accountId || "")}${input("amount", "Tutar (₺)", old ? raw(old.amount) : inv ? raw(inv.amount - D.paid(data, inv.id)) : "", "text", true, 'inputmode="decimal"')}${input("date", "İşlem tarihi", old?.date || today(), "date")}${input("description", "Açıklama", old ? old.description : inv ? `${inv.number} ${type === "income" ? "tahsilatı" : "ödemesi"}` : "")}${select("invoiceId", "İlişkili fatura (isteğe bağlı)", [["", "Faturasız / avans"]], "", false)}${input("receiptNo", "Fiş numarası (boşsa otomatik)", old?.receiptNo || "", "text", false)}${input("documentNo", "Belge numarası", old?.documentNo || "", "text", false)}${input("group", "İşlem grubu", old?.group || "", "text", false)}${input("deliveryNo", "İrsaliye numarası", old?.deliveryNo || "", "text", false)}</div><p class="form-note">Cari seçildiğinde hem cari hem kasa/banka bakiyesi güncellenir. Fatura seçildiğinde faturanın kalan tutarı da azalır. Faturasız kayıt avans veya genel cari ödemesi olarak izlenir.</p><p class="form-note" id="payment-balance-preview" role="status"></p>${footer("Hareketi kaydet")}</form>`,
   );
   const form = modal.querySelector("form");
   function refreshInvoices(selected = "") {
@@ -831,7 +831,27 @@ function paymentForm(
         )
         .join("");
   }
+  function previewBalance() {
+    const output = form.querySelector("#payment-balance-preview");
+    const cid = form.elements.contactId.value;
+    if (!cid) {
+      output.textContent = "Bağımsız kasa hareketi: hiçbir cari bakiyesinden düşmez. Cari tahsilatı için cari seçin.";
+      return;
+    }
+    try {
+      // Remove the old movement before previewing an edit, so it is counted once.
+      const base = D.balance({ ...data, transactions: data.transactions.filter((t) => t.id !== editId) }, cid);
+      const amount = D.money(form.elements.amount.value);
+      const after = D.safe(base + (form.elements.type.value === "income" ? -amount : amount));
+      output.textContent = `İşlem öncesi: ${fmt(base)} → İşlem sonrası: ${fmt(after)} (${debtLabel(after)}). ${form.elements.invoiceId.value ? "Seçili faturanın kalan tutarı da azalır." : "Genel cari bakiyesi güncellenir; fatura kalanını düşürmek için ilişkili faturayı seçin."}`;
+    } catch {
+      output.textContent = `Cari bakiyesi: ${fmt(D.balance(data, cid))}. Tahsilat bu bakiyeden çıkarılır; ödeme eklenir. Tutarı kuruş hassasiyetinde girin.`;
+    }
+  }
+  form.addEventListener("input", previewBalance);
+  form.addEventListener("change", previewBalance);
   refreshInvoices(invoiceId);
+  previewBalance();
   form.elements.contactId.addEventListener("change", () => refreshInvoices());
   form.elements.type.addEventListener("change", () => refreshInvoices());
   form.elements.invoiceId.addEventListener("change", () => {
@@ -844,6 +864,7 @@ function paymentForm(
       );
       form.elements.description.value = `${i.number} ${form.elements.type.value === "income" ? "tahsilatı" : "ödemesi"}`;
     }
+    previewBalance();
   });
   bindForm("transactions", editId);
 }
