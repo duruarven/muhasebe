@@ -1,0 +1,59 @@
+const { chromium } = require("playwright-core");
+const { createMobileServer } = require("../src/mobile-server");
+const { Store } = require("../src/store");
+const D = require("../src/domain");
+const fs = require("node:fs"), os = require("node:os"), path = require("node:path"), assert = require("node:assert/strict");
+(async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "isletmem-phone-"));
+  const store = new Store(path.join(dir, "data.json"));
+  store.add("accounts", { name: "Ortak kasa", type: "cash" });
+  store.add("contacts", { name: "Mobil müşteri", type: "customer" });
+  const service = createMobileServer(store, { host: "127.0.0.1" });
+  const port = await service.listen();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true, ...(process.env.UI_BROWSER_PATH ? { executablePath: process.env.UI_BROWSER_PATH } : {}), ...(process.platform === "linux" ? { args: ["--no-sandbox"] } : {}) });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "tr-TR" });
+    page.setDefaultTimeout(12000);
+    const errors = []; page.on("pageerror", e => errors.push(e.message));
+    await page.goto(`http://127.0.0.1:${port}`);
+    await page.getByLabel("Erişim kodu").fill(service.code);
+    await page.getByRole("button", { name: "Bağlan", exact: true }).click();
+    await page.getByRole("heading", { name: "Genel bakış", exact: true }).waitFor();
+    const noOverflow = async () => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Phone document must fit viewport");
+    await noOverflow();
+    await page.getByRole("button", { name: "Cari hesaplar", exact: true }).click();
+    await page.getByRole("button", { name: "Mobil müşteri", exact: true }).click();
+    await page.getByRole("button", { name: "Yeni Cari İşlem", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Stoksuz Satış / Hizmet Faturası", exact: true }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("İşlem açıklaması / hizmet adı").fill("Telefondan hizmet");
+    await dlg.getByLabel("Birim fiyat", { exact: true }).fill("1000");
+    await dlg.getByLabel("KDV oranı", { exact: true }).fill("0");
+    assert.equal(await dlg.locator(".sale-lines").evaluate(el => el.getBoundingClientRect().width < 390), true);
+    await dlg.getByRole("button", { name: "✓ Kaydet ve Kapat F8", exact: true }).click();
+    await dlg.waitFor({ state: "hidden" });
+    assert.equal(D.balance(store.data, store.data.contacts[0].id), 100000);
+    await page.getByRole("button", { name: "↓ Tahsilat al", exact: true }).click();
+    await dlg.getByLabel("Kasa / banka").selectOption({ label: "Ortak kasa" });
+    await dlg.getByLabel("Tutar (₺)").fill("300,01");
+    await dlg.getByLabel("Açıklama", { exact: false }).fill("Telefon tahsilatı");
+    await dlg.locator("#payment-balance-preview").getByText(/699,99/).waitFor();
+    await dlg.getByRole("button", { name: "Hareketi kaydet", exact: true }).click();
+    await dlg.waitFor({ state: "hidden" });
+    assert.equal(await page.locator(".balance-value").textContent(), "699,99");
+    assert.equal(D.balance(new Store(store.file).data, store.data.contacts[0].id), 69999);
+    // A desktop write appears on the phone without copying/importing any records.
+    store.add("transactions", { contactId: store.data.contacts[0].id, accountId: store.data.accounts[0].id, type: "income", amount: "100", description: "Masaüstünden tahsilat", date: new Date().toISOString().slice(0, 10) });
+    await page.locator(".balance-value").getByText("599,99", { exact: true }).waitFor({ timeout: 12000 });
+    await noOverflow();
+    for (const width of [360, 430, 768]) { await page.setViewportSize({ width, height: 844 }); await noOverflow(); }
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (process.env.UI_MOBILE_SCREENSHOT_PATH) await page.screenshot({ path: process.env.UI_MOBILE_SCREENSHOT_PATH, fullPage: true });
+    await page.getByRole("button", { name: "Dosya", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Mobil oturumu kapat", exact: true }).click();
+    await page.getByRole("button", { name: "Bağlan", exact: true }).waitFor();
+    assert.deepEqual(errors, []);
+    console.log("MOBILE UI PASS: gerçek HTTP girişi, telefon boyutlarında satış, tahsilat, ortak kalıcı kayıtlar, masaüstü değişikliğini otomatik okuma ve çıkış.");
+  } finally { await browser?.close(); await service.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+})().catch(e => { console.error(e); process.exitCode = 1; });

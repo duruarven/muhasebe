@@ -349,6 +349,8 @@ function renderAppMenus() {
     dropdown("Dosya", "file", [
       ["Verileri yedekle", "backup"],
       ["Listeyi yenile", "refresh"],
+      ...(window.accounting.mobileStatus ? [["Telefondan bağlan · Mobil erişim", "mobile-access"]] : []),
+      ...(window.accounting.logout ? [["Mobil oturumu kapat", "mobile-logout"]] : []),
     ]) +
     dropdown("Tanımlar", "definitions", [
       ["Yeni cari kart", "new-contact"],
@@ -868,6 +870,13 @@ function paymentForm(
   });
   bindForm("transactions", editId);
 }
+async function mobileAccess() {
+  const info = await api(window.accounting.mobileStatus());
+  const show = (info) => {
+    openModal("Telefondan bağlan", `<p class="form-note">Telefonu bu bilgisayarla aynı Wi-Fi ağına bağla. Bilgisayar ve program açık kalmalı. Yalnızca güvendiğin yerel ağda kullan; bağlantı internet üzerinden çalışmaz ve HTTPS içermez.</p>${info.running ? `<p>Telefonda tarayıcıya aşağıdaki adreslerden Wi-Fi adresini yaz:</p>${info.addresses.map(address => `<p><strong>${esc(address)}</strong></p>`).join("") || "<p>Ağ adresi bulunamadı. Wi-Fi bağlantını kontrol et.</p>"}<p>Erişim kodu (telefona kopyala):</p><input aria-label="Mobil erişim kodu" readonly value="${esc(info.code)}"><p class="form-note">Bu kodla bağlanan telefon kayıtlarını okuyabilir ve değiştirebilir. Erişimi kapatınca tüm mobil oturumlar sonlanır. Windows güvenlik duvarı sorarsa yalnızca özel ağ erişimine izin ver.</p>${button("Mobil erişimi kapat", "mobile-stop")}` : `<p>Mobil erişim şu an kapalı.</p>${button("Mobil erişimi aç", "mobile-start")}`}`);
+  };
+  show(info);
+}
 function openSales(type, stockless, presetContact = contactId) {
   if (!data.contacts.length) {
     notice("Önce bir cari hesap açın.", true);
@@ -964,6 +973,13 @@ function invoiceDetail(id) {
   );
 }
 async function action(name, el) {
+  if (name === "mobile-access") return mobileAccess();
+  if (name === "mobile-start" || name === "mobile-stop") {
+    await api(name === "mobile-start" ? window.accounting.mobileStart() : window.accounting.mobileStop());
+    return mobileAccess();
+  }
+  if (name === "mobile-logout") return api(window.accounting.logout());
+
   const id = el?.dataset.id;
   if (name === "card-definitions") return go("contacts");
   if (name === "card-movements") {
@@ -1242,3 +1258,21 @@ setInterval(updateClock, 1000);
     notice(e.message, true);
   }
 })();
+
+let refreshing = false;
+async function refreshSharedData() {
+  if (refreshing || !data || modal.open || document.hidden || document.activeElement?.matches("input,select,textarea")) return;
+  refreshing = true;
+  try {
+    const next = await api(window.accounting.read());
+    if (modal.open || document.hidden || document.activeElement?.matches("input,select,textarea")) return;
+    if (JSON.stringify(next) !== JSON.stringify(data)) {
+      data = next;
+      if (contactId && !data.contacts.some(c => c.id === contactId)) contactId = null;
+      render();
+    }
+  } catch (error) { notice(error.message, true); }
+  finally { refreshing = false; }
+}
+window.addEventListener("focus", refreshSharedData);
+setInterval(refreshSharedData, 5000);

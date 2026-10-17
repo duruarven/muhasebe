@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("accounting", {
+  mobileStatus: () => ipcRenderer.invoke("mobile:status"),
+  mobileStart: () => ipcRenderer.invoke("mobile:start"),
+  mobileStop: () => ipcRenderer.invoke("mobile:stop"),
   read: () => ipcRenderer.invoke("data:read"),
   add: (kind, input) => ipcRenderer.invoke("data:add", kind, input),
   update: (kind, id, input) =>

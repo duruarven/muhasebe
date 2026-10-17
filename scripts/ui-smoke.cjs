@@ -557,6 +557,25 @@ const assert = require("node:assert/strict");
     await dlg
       .getByRole("button", { name: "Pencereyi kapat", exact: true })
       .click();
+    if (desktop) {
+      await page.getByRole("button", { name: "Dosya", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Telefondan bağlan · Mobil erişim", exact: true }).click();
+      await dlg.getByRole("button", { name: "Mobil erişimi aç", exact: true }).click();
+      await dlg.getByLabel("Mobil erişim kodu").waitFor();
+      const info = (await page.evaluate(() => window.accounting.mobileStatus())).data;
+      assert.equal(info.running, true);
+      const base = `http://127.0.0.1:${new URL(info.addresses[0]).port}`;
+      assert.equal((await fetch(base + "/api/read")).status, 401);
+      const login = await fetch(base + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ code: info.code }) });
+      assert.equal(login.status, 200);
+      const cookie = login.headers.get("set-cookie").split(";")[0];
+      const shared = await (await fetch(base + "/api/read", { headers: { cookie } })).json();
+      assert.equal(shared.data.invoices.length, store.data.invoices.length);
+      await dlg.getByRole("button", { name: "Mobil erişimi kapat", exact: true }).click();
+      await dlg.getByRole("button", { name: "Mobil erişimi aç", exact: true }).waitFor();
+      assert.equal((await page.evaluate(() => window.accounting.mobileStatus())).data.running, false);
+      await dlg.getByRole("button", { name: "Pencereyi kapat", exact: true }).click();
+    }
     assert.deepEqual(errors, []);
     console.log(
       (desktop ? "ELECTRON" : "BROWSER") +

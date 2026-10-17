@@ -1,4 +1,4 @@
-# İşletmem Muhasebe · 0.4.1
+# İşletmem Muhasebe · 0.5.0
 
 Windows x64 için Türkçe, yerel çalışan ön muhasebe uygulaması. Klasik mavi masaüstü arayüzü, modül düğmeleri, cari bakiye paneli ve satır tabanlı hesap ekstresi.
 
@@ -140,3 +140,21 @@ Fiziksel yazıcı ve dış PDF/resim görüntüleyicisi otomatik test kapsamı d
 ## 0.4.1 tahsilat kontrolü
 
 Cari tahsilatında kayıt öncesi ve sonrası net bakiye gösterilir. Cari ekranından açılan tahsilatta cari seçimi zorunludur. Fazla tahsilat negatif bakiye ve “Borcumuz var” olarak görünür. Faturasız tahsilat genel cari bakiyesini azaltır; belirli faturanın kalanını azaltmak için ilişkili fatura seçilir. Mevcut bağımsız kasa kayıtları, düzenleme ekranında doğru cariye bağlanabilir; aynı tahsilatı tekrar girmeyin.
+
+## 0.5.0 — Telefon ve bilgisayarda aynı kayıtlar
+
+Android Chrome veya iPhone Safari üzerinden aynı Wi-Fi ağında kullanılır. Ayrı bir veri kopyası oluşturulmaz; cari, satış, stok ve tahsilatlar açık Windows programının aynı Store nesnesinden okunur ve aynı JSON dosyasına yazılır. Masaüstü ve telefon, form açık değilken beş saniyede bir değişiklikleri kontrol eder. Düzenlenen form otomatik yenilemeyle silinmez.
+
+1. Windows programında önce **Verilerimi yedekle** ile yedek al.
+2. **Dosya → Telefondan bağlan · Mobil erişim → Mobil erişimi aç** seç.
+3. Telefonu aynı Wi-Fi ağına bağla; gösterilen adreslerden bilgisayarın Wi-Fi adresini telefon tarayıcısına yaz.
+4. Ekrandaki erişim kodunu gir. Cari, satış ve tahsilat işlemleri ortak kayıtlara işlenir.
+5. Bitirince **Mobil erişimi kapat** seç. Program kapanınca erişim de kapanır. Yeniden açıldığında varsayılan olarak kapalıdır; her başlatmada yeni kod oluşur. Telefonda **Dosya → Mobil oturumu kapat** ile yalnızca o oturumdan çıkılır.
+
+Bilgisayarın ve programın açık kalması gerekir. Bu sürüm yerel ağ içindir; bilgisayar kapalıyken veya dışarıdan erişim sunmaz. HTTP bağlantısı şifrelenmez: yalnızca güvendiğin özel Wi-Fi ağında kullan. Modemde port yönlendirme yapma. Windows güvenlik duvarı izin sorarsa yalnızca özel ağ erişimini seç. Misafir Wi-Fi ağlarında cihazlar birbirinden ayrıldığı için bağlantı kurulamayabilir. VPN/ortak internet üzerinden kullanım için HTTPS ve merkezi sunuculu ayrı dağıtım gerekir.
+
+Mobil sunucu kapalıyken ağ dinlemez. Açıldığında rastgele bir port kullanır. API, 128 bit rastgele erişim koduyla oturum açılmasını ister; oturum çerezi HttpOnly ve SameSite=Strict'tir. Yazma isteklerinde JSON ve aynı Origin zorunludur. Başarısız girişler sınırlandırılır. Kaynak dosyalar açık bir izin listesiyle servis edilir; veri dosyası veya Node kaynakları servis edilmez. Erişim kodunu verdiğin kişi tüm muhasebe kayıtlarına erişebilir ve değiştirebilir.
+
+Telefon için satış satırları kart görünümüne, formlar tek sütuna dönüşür; geniş ekstreler kendi alanında yatay kaydırılır. Yedek ve CSV telefona indirilebilir; ek belgeler telefonun dosya seçicisinden yüklenebilir. Tarayıcı yazdırma desteği cihaza bağlıdır. Mobil sürüm çevrimdışı kayıt almaz; bağlantı yokken kaydın tamamlandığı varsayılmamalıdır.
+
+Doğrulama: `npm test`, `npm run test:desktop`; Chromium bulunan ortamda `UI_BROWSER_PATH=/usr/bin/chromium npm run test:mobile`. Mobil test gerçek HTTP oturumu, ortak dosyada satış/tahsilat, masaüstü değişikliklerinin otomatik görünmesi, 360/390/430/768 piksel genişlikler ve oturum kapatmayı kontrol eder. Fiziksel telefon ve kullanıcının Wi-Fi/güvenlik duvarı bu ortamda test edilmez.

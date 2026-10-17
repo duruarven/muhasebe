@@ -7,7 +7,14 @@ const D = require("./domain");
 const { randomUUID } = require("node:crypto");
 const { normalizeAttachments, LIMIT } = require("./attachments");
 app.commandLine.appendSwitch("lang", "tr-TR");
-let store;
+let store, mobile;
+const { createMobileServer } = require("./mobile-server");
+const os = require("node:os");
+function mobileInfo() {
+  const port = mobile?.server.address()?.port;
+  const addresses = port ? Object.values(os.networkInterfaces()).flat().filter(i => i && i.family === "IPv4" && !i.internal).map(i => `http://${i.address}:${port}`) : [];
+  return { running: Boolean(port), addresses, code: mobile?.code || "" };
+}
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
 app.on("second-instance", () => {
@@ -55,6 +62,20 @@ app.whenReady().then(() => {
         return { ok: false, error: e.message };
       }
     });
+  handle("mobile:status", () => mobileInfo());
+  handle("mobile:start", async () => {
+    if (!mobile) {
+      const service = createMobileServer(store);
+      await service.listen();
+      mobile = service;
+    }
+    return mobileInfo();
+  });
+  handle("mobile:stop", async () => {
+    if (mobile) await mobile.close();
+    mobile = null;
+    return mobileInfo();
+  });
   handle("data:read", () => store.data);
   handle("data:add", (kind, input) => store.add(kind, input));
   handle("data:update", (kind, id, input) => store.update(kind, id, input));
@@ -147,6 +168,7 @@ app.whenReady().then(() => {
     if (!BrowserWindow.getAllWindows().length) window();
   });
 });
+app.on("before-quit", () => { if (mobile) { mobile.server.closeAllConnections(); mobile.server.close(); } });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
