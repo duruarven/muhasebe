@@ -594,5 +594,6 @@ const assert = require("node:assert/strict");
   }
 })().catch((e) => {
   console.error(e);
+  if (process.env.GITHUB_ACTIONS) console.log("::error::" + String(e.stack || e).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A"));
   process.exitCode = 1;
 });
