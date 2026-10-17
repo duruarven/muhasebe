@@ -31,28 +31,75 @@
   }
   const rounded = (a, b, divisor) =>
     safe(
-      Number((BigInt(a) * BigInt(b) + BigInt(divisor / 2)) / BigInt(divisor)),
+      Number((BigInt(a) * BigInt(b) + BigInt(divisor) / 2n) / BigInt(divisor)),
     );
+  const exchangeRate = (value) => decimal(value, 6, "Döviz kuru");
+  function convertPrice(amount, fromRate, toRate) {
+    safe(amount);
+    safe(fromRate);
+    safe(toRate);
+    if (amount < 0 || fromRate <= 0 || toRate <= 0)
+      throw Error("Geçerli bir kur girin.");
+    return rounded(amount, fromRate, toRate);
+  }
   function line(input) {
     const quantityMilli = quantity(input.quantity),
       unitPrice = money(input.unitPrice, true);
-    const vatBps = rate(input.vatRate ?? "20"),
-      discountBps = rate(input.discount ?? "0");
-    const gross = rounded(quantityMilli, unitPrice, 1000);
-    const discountAmount = rounded(gross, discountBps, 10000);
-    const subtotal = gross - discountAmount;
-    const vatAmount = rounded(subtotal, vatBps, 10000);
+    const currency = input.currency || "TL";
+    if (!["TL", "USD", "EUR"].includes(currency))
+      throw Error("Para birimi TL, USD veya EUR olmalı.");
+    const fx = currency === "TL" ? 1000000 : exchangeRate(input.exchangeRate);
+    const unitPriceTL = convertPrice(unitPrice, fx, 1000000);
+    const vatBps = rate(input.vatRate ?? "20");
+    const contactDiscountBps = rate(input.contactDiscount ?? "0");
+    const discountBps = rate(input.discount ?? "0"),
+      discount2Bps = rate(input.discount2 ?? "0"),
+      discount3Bps = rate(input.discount3 ?? "0");
+    const vatIncluded = input.vatIncluded === true;
+    const grossInputTL = rounded(quantityMilli, unitPriceTL, 1000);
+    let discountedInputTL = grossInputTL;
+    for (const percent of [
+      contactDiscountBps,
+      discountBps,
+      discount2Bps,
+      discount3Bps,
+    ])
+      discountedInputTL -= rounded(discountedInputTL, percent, 10000);
+    const gross = vatIncluded
+      ? rounded(grossInputTL, 10000, 10000 + vatBps)
+      : grossInputTL;
+    const subtotal = vatIncluded
+      ? rounded(discountedInputTL, 10000, 10000 + vatBps)
+      : discountedInputTL;
+    const vatAmount = vatIncluded
+      ? discountedInputTL - subtotal
+      : rounded(subtotal, vatBps, 10000);
     return {
       quantityMilli,
       unitPrice,
+      unitPriceTL,
+      currency,
+      exchangeRate: fx,
       vatBps,
+      vatIncluded,
+      contactDiscountBps,
       discountBps,
-      discountAmount,
+      discount2Bps,
+      discount3Bps,
+      grossInputTL,
+      gross,
+      discountAmount: gross - subtotal,
       subtotal,
       vatAmount,
       amount: safe(subtotal + vatAmount),
+      discountedUnitPriceTL: rounded(subtotal, 1000, quantityMilli),
     };
   }
+  const invoiceLines = (invoice) =>
+    invoice.stockless
+      ? invoice.serviceLines ||
+        (invoice.serviceLine ? [invoice.serviceLine] : [])
+      : invoice.items || [];
   const paid = (data, invoiceId) =>
     data.transactions
       .filter((t) => t.invoiceId === invoiceId)
@@ -191,7 +238,7 @@
       (t) => t.contactId === contactId,
     );
     for (const i of invoices) {
-      const lines = i.stockless ? [i.serviceLine].filter(Boolean) : i.items;
+      const lines = invoiceLines(i);
       if (
         Array.isArray(lines) &&
         lines.length &&
@@ -302,6 +349,9 @@
     quantity,
     rate,
     line,
+    exchangeRate,
+    convertPrice,
+    invoiceLines,
     paid,
     ledger,
     filterLedger,

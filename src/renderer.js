@@ -481,25 +481,7 @@ function ledgerGrid(c) {
 }
 function expandedInvoice(id) {
   const i = data.invoices.find((i) => i.id === id);
-  const lines = i.serviceLine ? [i.serviceLine] : i.items || [];
-  return `${
-    lines.length
-      ? table(
-          [
-            "ÜRÜN / HİZMET",
-            "MİKTAR",
-            "BİRİM FİYAT",
-            "İSKONTO",
-            "KDV",
-            "TOPLAM",
-          ],
-          lines.map(
-            (l) =>
-              `<tr><td>${esc(l.name)}</td><td>${qty(l.quantityMilli)} ${esc(l.unit || "Hizmet")}</td><td>${fmt(l.unitPrice)}</td><td>%${l.discountBps / 100}</td><td>%${l.vatBps / 100}</td><td>${fmt(l.amount)}</td></tr>`,
-          ),
-        )
-      : "<p>Önceki sürümden aktarılan toplam tutarlı fatura; stok kalemi bulunmuyor.</p>"
-  }<p>Bağlı tahsilat / ödeme: <strong>${fmt(D.paid(data, id))}</strong> &nbsp; Kalan: <strong>${fmt(i.amount - D.paid(data, id))}</strong> ${button("Faturayı aç", "invoice-detail", "small", `data-id="${id}"`)}</p>`;
+  return `${invoiceLineTable(i)}<p>Bağlı tahsilat / ödeme: <strong>${fmt(D.paid(data, id))}</strong> &nbsp; Kalan: <strong>${fmt(i.amount - D.paid(data, id))}</strong> ${button("Faturayı aç", "invoice-detail", "small", `data-id="${id}"`)}</p>`;
 }
 function selectLedger(id, focus = false) {
   const rows = currentLedgerRows(),
@@ -703,6 +685,7 @@ function reports() {
   );
 }
 function openModal(title, html, wide = false) {
+  modal.classList.remove("sales-window");
   modal.classList.toggle("wide", wide);
   document.querySelector("#modal-title").textContent = title;
   document.querySelector("#modal-body").innerHTML = html;
@@ -750,7 +733,7 @@ function contactForm(id) {
         ["both", "Müşteri & tedarikçi"],
       ],
       c.type || "customer",
-    )}${input("name", "Cari unvanı / ad soyad", c.name)}${input("phone", "Telefon", c.phone, "tel", false)}${input("taxNumber", "Vergi no / TCKN", c.taxNumber, "text", false)}${input("taxOffice", "Vergi dairesi", c.taxOffice, "text", false)}${input("email", "E-posta", c.email, "email", false)}${input("address", "Adres", c.address, "text", false)}</div><div class="form-section">Açılış / devir bakiyesi</div><div class="form-grid three">${input("openingAmount", "Tutar (₺)", raw(Math.abs(c.openingBalance || 0)), "text", true, 'inputmode="decimal"')}${select(
+    )}${input("name", "Cari unvanı / ad soyad", c.name)}${input("phone", "Telefon", c.phone, "tel", false)}${input("taxNumber", "Vergi no / TCKN", c.taxNumber, "text", false)}${input("taxOffice", "Vergi dairesi", c.taxOffice, "text", false)}${input("email", "E-posta", c.email, "email", false)}${input("address", "Adres", c.address, "text", false)}${input("discount", "Varsayılan cari iskonto (%)", (c.discountBps || 0) / 100, "text", true, 'inputmode="decimal"')}</div><div class="form-section">Açılış / devir bakiyesi</div><div class="form-grid three">${input("openingAmount", "Tutar (₺)", raw(Math.abs(c.openingBalance || 0)), "text", true, 'inputmode="decimal"')}${select(
       "openingSide",
       "Bakiye yönü",
       [
@@ -766,7 +749,7 @@ function productForm(id) {
   const p = data.products.find((p) => p.id === id) || {};
   openModal(
     id ? "Ürün kartını düzenle" : "Yeni ürün kartı",
-    `<form><div class="form-grid">${input("code", "Ürün kodu", p.code, "text", true, 'placeholder="Örn. UR-001"')}${input("name", "Ürün adı", p.name)}${select(
+    `<form><div class="form-grid">${input("code", "Ürün kodu", p.code, "text", true, 'placeholder="Örn. UR-001"')}${input("name", "Ürün adı", p.name)}${input("barcode", "Barkod", p.barcode, "text", false)}${input("specialCode", "Özel kod", p.specialCode, "text", false)}${select(
       "unit",
       "Birim",
       [
@@ -864,110 +847,40 @@ function paymentForm(
   });
   bindForm("transactions", editId);
 }
-function invoiceForm(type, presetContact = contactId) {
-  if (!data.contacts.length) {
-    notice("Fatura için önce bir cari hesap açın.", true);
-    contactForm();
-    return;
-  }
-  if (!data.products.length) {
-    notice("Ürünlü fatura için önce bir ürün kartı açın.", true);
-    productForm();
-    return;
-  }
-  const c = data.contacts.find((c) => c.id === presetContact);
-  type =
-    type ||
-    (c?.type === "supplier" ||
-    (!c && !data.contacts.some((c) => c.type !== "supplier"))
-      ? "purchase"
-      : "sale");
-  const prefix = type === "sale" ? "SAT" : "ALI";
-  let n = data.invoices.length + 1;
-  while (
-    data.invoices.some(
-      (i) =>
-        i.number ===
-        `${prefix}-${new Date().getFullYear()}-${String(n).padStart(4, "0")}`,
-    )
-  )
-    n++;
-  openModal(
-    type === "sale" ? "Yeni satış faturası" : "Yeni alış faturası",
-    `<form><div class="form-grid three">${select("contactId", "Cari hesap", [["", "Cari seçin"], ...data.contacts.map((c) => [c.id, c.name])], presetContact || "")}${input("number", "Fatura numarası", `${prefix}-${new Date().getFullYear()}-${String(n).padStart(4, "0")}`)}${select(
-      "type",
-      "Fatura türü",
-      [
-        ["sale", "Satış faturası"],
-        ["purchase", "Alış faturası"],
-      ],
-      type,
-    )}${input("date", "Fatura tarihi", today(), "date")}${input("dueDate", "Vade tarihi", today(), "date")}${input("description", "Açıklama", type === "sale" ? "Ürün satışı" : "Ürün alışı")}${input("deliveryNo", "İrsaliye numarası", "", "text", false)}${input("documentNo", "Belge numarası", "", "text", false)}${input("group", "İşlem grubu", "", "text", false)}</div><div class="form-section">Fatura kalemleri <span class="muted">· Fiyatlar KDV hariçtir</span></div><div class="table-wrap"><table class="line-items"><thead><tr><th class="product-col">ÜRÜN</th><th class="qty-col">MİKTAR</th><th class="price-col">BİRİM FİYAT ₺</th><th class="rate-col">İSK. %</th><th class="rate-col">KDV %</th><th class="total-col">TOPLAM</th><th></th></tr></thead><tbody id="invoice-lines"></tbody></table></div><div class="line-tools">${button("+ Ürün satırı ekle", "add-line", "ghost small")}<span class="muted">En fazla 100 satır · miktar 3 ondalık</span></div><div id="invoice-totals" class="totals" aria-live="polite"></div><p class="form-note">Kaydedildiğinde cari bakiye ve stok güncellenir. Tahsilat/ödeme için ayrıca hareket girin. Bu kayıt resmi e-Fatura/e-Arşiv belgesi değildir.</p>${footer("Faturayı kaydet")}</form>`,
-    true,
-  );
-  const form = modal.querySelector("form");
-  form.elements.type.addEventListener("change", () => {
-    const previous = form.elements.contactId.value;
-    form.elements.contactId.innerHTML =
-      '<option value="">Cari seçin</option>' +
-      data.contacts
-        .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`)
-        .join("");
-    if ([...form.elements.contactId.options].some((o) => o.value === previous))
-      form.elements.contactId.value = previous;
-    modal.querySelectorAll(".invoice-line").forEach((row) => setProduct(row));
-  });
-  addInvoiceLine();
-  bindForm("invoices", null, (form) => ({
-    ...Object.fromEntries(new FormData(form)),
-    items: [...modal.querySelectorAll(".invoice-line")].map(readLine),
-  }));
-}
-function stocklessForm(type = "sale") {
+function openSales(type, stockless, presetContact = contactId) {
   if (!data.contacts.length) {
     notice("Önce bir cari hesap açın.", true);
     contactForm();
     return;
   }
-  const prefix = type === "sale" ? "SS" : "SA";
-  let n = data.invoices.length + 1;
-  while (
-    data.invoices.some(
-      (i) =>
-        i.number ===
-        `${prefix}-${new Date().getFullYear()}-${String(n).padStart(4, "0")}`,
-    )
-  )
-    n++;
-  openModal(
-    type === "sale"
-      ? "Stoksuz Satış / Hizmet Faturası"
-      : "Stoksuz Alış / Gider Faturası",
-    `<form><div class="form-grid">${select("contactId", "Cari hesap", [["", "Cari seçin"], ...data.contacts.map((c) => [c.id, c.name])], contactId || "")}${input("number", "Fatura numarası", `${prefix}-${new Date().getFullYear()}-${String(n).padStart(4, "0")}`)}${input("date", "Fatura tarihi", today(), "date")}${input("dueDate", "Vade tarihi", today(), "date")}${input("description", "İşlem açıklaması / hizmet adı", "")}${input("netAmount", "KDV hariç tutar (₺)", "", "text", true, 'inputmode="decimal"')}${input("discount", "İskonto oranı (%)", "0", "text", true, 'inputmode="decimal"')}${input("vatRate", "KDV oranı (%)", "20", "text", true, 'inputmode="decimal"')}${input("receiptNo", "Fiş numarası (boşsa otomatik)", "", "text", false)}${input("deliveryNo", "İrsaliye numarası", "", "text", false)}${input("documentNo", "Belge numarası", "", "text", false)}${input("group", "İşlem grubu", "", "text", false)}</div><div id="service-total" class="totals" aria-live="polite"></div><p class="form-note">Bu işlem cari hesaba fatura olarak kaydedilir; ürün kartı veya stok hareketi oluşturmaz. Kasa/banka hareketi için ayrıca tahsilat/ödeme girin.</p>${footer("Faturayı kaydet")}</form>`,
-  );
-  const form = modal.querySelector("form");
-  function updateTotal() {
-    try {
-      const row = D.line({
-        quantity: "1",
-        unitPrice: form.elements.netAmount.value,
-        discount: form.elements.discount.value,
-        vatRate: form.elements.vatRate.value,
-      });
-      modal.querySelector("#service-total").innerHTML =
-        `<div class="total-row"><span>Net tutar</span><strong>${fmt(row.subtotal)}</strong></div><div class="total-row"><span>KDV</span><strong>${fmt(row.vatAmount)}</strong></div><div class="total-row final"><span>Genel toplam</span><strong>${fmt(row.amount)}</strong></div>`;
-    } catch {
-      modal.querySelector("#service-total").textContent =
-        "Toplamı görmek için tutar ve oranları girin.";
-    }
+  if (!stockless && !data.products.length) {
+    notice("Stoklu fatura için önce ürün kartı açın.", true);
+    productForm();
+    return;
   }
-  form.addEventListener("input", updateTotal);
-  updateTotal();
-  bindForm("invoices", null, (form) => ({
-    ...Object.fromEntries(new FormData(form)),
+  const c = data.contacts.find((c) => c.id === presetContact);
+  type = type || (c?.type === "supplier" ? "purchase" : "sale");
+  window.SalesEditor.open({
+    data,
     type,
-    stockless: true,
-  }));
+    stockless,
+    contactId: presetContact,
+    openDialog: openModal,
+    api,
+    onSaved: (next) => {
+      data = next;
+      render();
+      notice(
+        "Fatura kaydedildi. Cari, stok ve varsa peşin kasa hareketi güncellendi.",
+      );
+    },
+  });
+}
+function invoiceForm(type, presetContact = contactId) {
+  return openSales(type, false, presetContact);
+}
+function stocklessForm(type = "sale") {
+  return openSales(type, true, contactId);
 }
 function help() {
   openModal(
@@ -982,7 +895,7 @@ function help() {
         ["Yukarı / Aşağı", "Ekstrede kayıt seç"],
         ["Esc", "Menü veya pencereyi kapat"],
       ].map(([key, desc]) => `<tr><td>${key}</td><td>${desc}</td></tr>`),
-    )}<p class="form-note">Bu sürümde para birimi TL'dir. Resmi e-Fatura/e-Arşiv gönderimi, çek/senet ve taksit planı modülleri bulunmaz. Cari türü gruplama içindir; aynı cariye alış ve satış kaydedilebilir.</p>${footerButton()}`,
+    )}<p class="form-note">Dövizli satış/alış satırları elle girilen kurlarla TL'ye çevrilir. Cari ve kasa bakiyeleri TL'dir. Resmi e-Fatura/e-Arşiv gönderimi, çek/senet ve taksit planı modülleri bulunmaz. Cari türü gruplama içindir; aynı cariye alış ve satış kaydedilebilir.</p>${footerButton()}`,
   );
 }
 function hideMenus() {
@@ -993,60 +906,30 @@ function hideMenus() {
     .querySelectorAll("[data-menu]")
     .forEach((b) => b.setAttribute("aria-expanded", "false"));
 }
-function readLine(row) {
-  return Object.fromEntries(
-    [...row.querySelectorAll("[data-field]")].map((el) => [
-      el.dataset.field,
-      el.value,
-    ]),
-  );
-}
-function setProduct(row) {
-  const p = data.products.find(
-    (p) => p.id === row.querySelector('[data-field="productId"]').value,
-  );
-  if (p) {
-    row.querySelector('[data-field="unitPrice"]').value = raw(
-      modal.querySelector('[name="type"]').value === "sale"
-        ? p.salePrice
-        : p.purchasePrice,
-    );
-    row.querySelector('[data-field="vatRate"]').value = p.vatBps / 100;
-  }
-  updateInvoiceTotals();
-}
-function addInvoiceLine() {
-  const body = modal.querySelector("#invoice-lines");
-  if (!body || body.children.length >= 100) return;
-  const tr = document.createElement("tr");
-  tr.className = "invoice-line";
-  tr.innerHTML = `<td><select data-field="productId" aria-label="Satır ürünü" required><option value="">Ürün seçin</option>${data.products.map((p) => `<option value="${p.id}">${esc(p.code)} · ${esc(p.name)} (${esc(p.unit)})</option>`).join("")}</select></td><td><input data-field="quantity" aria-label="Miktar" value="1" inputmode="decimal" required maxlength="20"></td><td><input data-field="unitPrice" aria-label="Birim fiyat" value="0" inputmode="decimal" required maxlength="20"></td><td><input data-field="discount" aria-label="İskonto oranı" value="0" inputmode="decimal" required maxlength="6"></td><td><input data-field="vatRate" aria-label="KDV oranı" value="20" inputmode="decimal" required maxlength="6"></td><td class="line-total num">—</td><td>${button("×", "remove-line", "icon-button", 'aria-label="Satırı kaldır"')}</td>`;
-  body.append(tr);
-  tr.querySelector("select").addEventListener("change", () => setProduct(tr));
-  tr.addEventListener("input", updateInvoiceTotals);
-  updateInvoiceTotals();
-}
-function updateInvoiceTotals() {
-  let subtotal = 0,
-    tax = 0,
-    discount = 0,
-    total = 0,
-    invalid = false;
-  for (const row of modal.querySelectorAll(".invoice-line")) {
-    try {
-      const l = D.line(readLine(row));
-      subtotal = D.safe(subtotal + l.subtotal);
-      tax = D.safe(tax + l.vatAmount);
-      discount = D.safe(discount + l.discountAmount);
-      total = D.safe(total + l.amount);
-      row.querySelector(".line-total").textContent = fmt(l.amount);
-    } catch {
-      invalid = true;
-      row.querySelector(".line-total").textContent = "Geçersiz";
-    }
-  }
-  modal.querySelector("#invoice-totals").innerHTML =
-    `<div class="total-row"><span>İskonto toplamı</span><strong>${fmt(discount)}</strong></div><div class="total-row"><span>Ara toplam (net)</span><strong>${fmt(subtotal)}</strong></div><div class="total-row"><span>KDV toplamı</span><strong>${fmt(tax)}</strong></div><div class="total-row final"><span>Genel toplam</span><strong>${invalid ? "—" : fmt(total)}</strong></div>`;
+function invoiceLineTable(i) {
+  const lines = D.invoiceLines(i);
+  return lines.length
+    ? table(
+        [
+          "KOD",
+          "ÜRÜN / HİZMET",
+          "MİKTAR",
+          "BİRİM FİYAT",
+          "KUR",
+          "KDV",
+          "DAHİL?",
+          "CARİ İSK.",
+          "İSK. 1 / 2 / 3",
+          "NET TL",
+          "KDV TL",
+          "TOPLAM TL",
+        ],
+        lines.map(
+          (l) =>
+            `<tr><td>${esc(l.code || "")}</td><td>${esc(l.name)}<small>${esc(l.barcode || "")}${l.specialCode ? " · " + esc(l.specialCode) : ""}</small></td><td>${qty(l.quantityMilli)} ${esc(l.unit || "Hizmet")}</td><td>${numberFormat(l.unitPrice)} ${esc(l.currency || "TL")}</td><td>${l.exchangeRate ? l.exchangeRate / 1000000 : 1}</td><td>%${l.vatBps / 100}</td><td>${l.vatIncluded ? "Evet" : "Hayır"}</td><td>%${(l.contactDiscountBps || 0) / 100}</td><td>%${l.discountBps / 100} / %${(l.discount2Bps || 0) / 100} / %${(l.discount3Bps || 0) / 100}</td><td class="num">${numberFormat(l.subtotal)}</td><td class="num">${numberFormat(l.vatAmount)}</td><td class="num">${numberFormat(l.amount)}</td></tr>`,
+        ),
+      )
+    : '<p class="form-note">Önceki sürümden aktarılan toplam tutarlı fatura; ürün / hizmet ayrıntısı bulunmuyor.</p>';
 }
 function invoiceDetail(id) {
   const i = data.invoices.find((i) => i.id === id);
@@ -1054,18 +937,8 @@ function invoiceDetail(id) {
   const paid = D.paid(data, i.id),
     remaining = i.amount - paid;
   openModal(
-    `${names[i.type]} faturası · ${i.number}`,
-    `<div class="invoice-info"><div><strong>${esc(contactName(i.contactId))}</strong>${esc(i.description)}<br><small>Fatura: ${day(i.date)} · Vade: ${day(i.dueDate)}<br>${esc(i.number)}</small></div><div><small>GENEL TOPLAM</small><div class="invoice-total">${fmt(i.amount)}</div>${badge(remaining === 0 ? "Kapandı" : "Açık hesap", remaining === 0 ? "green" : "amber")}</div></div>${
-      i.items?.length || i.serviceLine
-        ? table(
-            ["ÜRÜN", "MİKTAR", "BİRİM FİYAT", "İSK. %", "KDV %", "TOPLAM"],
-            (i.serviceLine ? [i.serviceLine] : i.items).map(
-              (l) =>
-                `<tr><td>${esc(l.name)}<small>${esc(l.code)}</small></td><td>${qty(l.quantityMilli)} ${esc(l.unit || "Hizmet")}</td><td>${fmt(l.unitPrice)}</td><td>%${l.discountBps / 100}</td><td>%${l.vatBps / 100}</td><td class="num">${fmt(l.amount)}</td></tr>`,
-            ),
-          )
-        : '<p class="form-note">Önceki sürümden aktarılan toplam tutarlı faturadır; ürün detayı ve stok hareketi içermez.</p>'
-    }<div class="totals">${i.subtotal != null ? `<div class="total-row"><span>Ara toplam</span><strong>${fmt(i.subtotal)}</strong></div><div class="total-row"><span>KDV</span><strong>${fmt(i.vatAmount)}</strong></div>` : ""}<div class="total-row"><span>Bağlı tahsilat / ödeme</span><strong>${fmt(paid)}</strong></div><div class="total-row final"><span>Kalan tutar</span><strong>${fmt(remaining)}</strong></div></div><p class="form-note">Faturasız avanslar bu faturanın kalanına otomatik dağıtılmaz; cari bakiyesinde görünür. Bu belge resmi mali belge değildir.</p><div class="form-footer">${button("Sil", "delete", "danger", `data-kind="invoices" data-id="${i.id}"`)}${button("Yazdır", "print", "secondary")}${remaining > 0 ? button(i.type === "sale" ? "Tahsilat al" : "Ödeme yap", "invoice-payment", "", `data-id="${i.id}"`) : ""}</div>`,
+    `${i.stockless ? "Stoksuz " : ""}${names[i.type]} faturası · ${i.number}`,
+    `<div class="invoice-info"><div><strong>${esc(contactName(i.contactId))}</strong>${esc(i.description)}<br><small>Fatura: ${day(i.date)} · Vade: ${day(i.dueDate)} · ${esc(i.number)}<br>Plasiyer: ${esc(i.salesperson || "—")} · İşlem grubu: ${esc(i.group || "—")} · ${i.cashSale ? "Peşin işlem" : "Açık hesap"}</small></div><div><small>GENEL TOPLAM TL</small><div class="invoice-total">${fmt(i.amount)}</div>${badge(remaining === 0 ? "Kapandı" : "Açık hesap", remaining === 0 ? "green" : "amber")}</div></div>${invoiceLineTable(i)}<div class="totals">${i.subtotal != null ? `<div class="total-row"><span>İskonto</span><strong>${fmt(i.discountAmount)}</strong></div><div class="total-row"><span>Net ara toplam</span><strong>${fmt(i.subtotal)}</strong></div><div class="total-row"><span>KDV</span><strong>${fmt(i.vatAmount)}</strong></div>` : ""}<div class="total-row"><span>Bağlı tahsilat / ödeme</span><strong>${fmt(paid)}</strong></div><div class="total-row final"><span>Kalan tutar</span><strong>${fmt(remaining)}</strong></div></div>${i.attachments?.length ? `<div class="form-section">Ek Belgeler (${i.attachments.length})</div><div class="actions">${i.attachments.map((a) => button("▤ " + esc(a.name), "open-attachment", "secondary small", `data-invoice="${i.id}" data-id="${a.id}"`)).join("")}</div>` : ""}<p class="form-note">Kur ve fiyatlar işlem anındaki değerleriyle saklanır; toplamlar TL'dir. Faturasız avanslar bu faturaya otomatik dağıtılmaz. Bu belge resmi mali belge değildir.</p><div class="form-footer">${button("Sil", "delete", "danger", `data-kind="invoices" data-id="${i.id}"`)}${button("Yazdır", "print", "secondary")}${remaining > 0 ? button(i.type === "sale" ? "Tahsilat al" : "Ödeme yap", "invoice-payment", "", `data-id="${i.id}"`) : ""}</div>`,
     true,
   );
 }
@@ -1167,15 +1040,15 @@ async function action(name, el) {
     return paymentForm(t.type, t.invoiceId || "", t.contactId || "", t.id);
   }
   if (name === "invoice-detail") return invoiceDetail(id);
-  if (name === "close-modal") return modal.close();
-  if (name === "add-line") return addInvoiceLine();
-  if (name === "remove-line") {
-    if (modal.querySelectorAll(".invoice-line").length > 1) {
-      el.closest("tr").remove();
-      updateInvoiceTotals();
+  if (name === "open-attachment") {
+    try {
+      await api(window.accounting.openAttachment(el.dataset.invoice, id));
+    } catch (error) {
+      document.querySelector("#modal-error").textContent = error.message;
     }
     return;
   }
+  if (name === "close-modal") return modal.close();
   if (name === "invoice-payment") {
     const i = data.invoices.find((i) => i.id === id);
     return paymentForm(
@@ -1256,6 +1129,7 @@ document.addEventListener("dblclick", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
+  if (window.SalesEditor.handleKey(e)) return;
   const openMenu = document.querySelector("[data-menu-panel]:not([hidden])");
   if (openMenu && ["ArrowDown", "ArrowUp", "Escape"].includes(e.key)) {
     e.preventDefault();

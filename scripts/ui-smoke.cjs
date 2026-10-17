@@ -11,6 +11,9 @@ const assert = require("node:assert/strict");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "isletmem-ui-"));
   const store = new Store(path.join(dir, "muhasebe.json"));
   const src = path.resolve(__dirname, "../src");
+  const pdf = Buffer.from("%PDF-1.4\nornek belge");
+  const pdfPath = path.join(dir, "ornek-fatura.pdf");
+  fs.writeFileSync(pdfPath, pdf);
   const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, "http://local").pathname;
     const file = path.join(
@@ -47,23 +50,40 @@ const assert = require("node:assert/strict");
       });
       page = await desktop.firstWindow();
       await desktop.evaluate(
-        ({ dialog }, filePath) => {
-          dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+        ({ dialog }, paths) => {
+          dialog.showSaveDialog = async () => ({
+            canceled: false,
+            filePath: paths.csv,
+          });
+          dialog.showOpenDialog = async () => ({
+            canceled: false,
+            filePaths: [paths.pdf],
+          });
         },
-        path.join(dir, "ekstre.csv"),
+        { csv: path.join(dir, "ekstre.csv"), pdf: pdfPath },
       );
       Object.defineProperty(store, "data", {
         get: () => new Store(store.file).data,
       });
     } else {
       browser = await chromium.launch(options);
-      page = await browser.newPage({ viewport: { width: 1440, height: 1040 } });
+      page = await browser.newPage({
+        viewport: { width: 1440, height: 1040 },
+        locale: "tr-TR",
+      });
     }
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     if (!desktop)
       await page.exposeFunction("bridge", ({ op, kind, input, id }) => {
         try {
+          if (op === "pick")
+            return {
+              ok: true,
+              data: require("../src/attachments").normalizeAttachments([
+                { name: "ornek-fatura.pdf", base64: pdf.toString("base64") },
+              ]),
+            };
           if (op === "export") {
             fs.writeFileSync(
               path.join(dir, "ekstre.csv"),
@@ -98,6 +118,7 @@ const assert = require("node:assert/strict");
             window.bridge({ op: "export", id: contactId, input: filters }),
           backup: async () => ({ ok: true, data: null }),
           print: async () => ({ ok: true }),
+          pickAttachments: () => window.bridge({ op: "pick" }),
         };
       });
     if (!desktop)
@@ -109,7 +130,12 @@ const assert = require("node:assert/strict");
         .click();
     const dlg = page.getByRole("dialog");
     const save = async (name) => {
-      await dlg.getByRole("button", { name, exact: true }).click();
+      await dlg
+        .getByRole("button", {
+          name: name === "Faturayı kaydet" ? "✓ Kaydet ve Kapat F8" : name,
+          exact: true,
+        })
+        .click();
       await dlg.waitFor({ state: "hidden" });
     };
     await nav("▣ Kasa & banka");
@@ -124,6 +150,8 @@ const assert = require("node:assert/strict");
       .click();
     await dlg.getByLabel("Ürün kodu").fill("UR-001");
     await dlg.getByLabel("Ürün adı").fill("Çalışma masası");
+    await dlg.getByLabel("Barkod", { exact: true }).fill("869000123");
+    await dlg.getByLabel("Özel kod", { exact: true }).fill("MASA");
     await dlg.getByLabel("KDV hariç alış fiyatı").fill("50");
     await dlg.getByLabel("KDV hariç satış fiyatı").fill("100");
     await dlg.getByLabel("Açılış stok miktarı").fill("10");
@@ -143,14 +171,21 @@ const assert = require("node:assert/strict");
     await page
       .getByRole("button", { name: "+ Satış faturası", exact: true })
       .click();
+    await dlg.getByLabel("Hızlı barkod", { exact: true }).fill("869000123");
     await dlg
-      .getByLabel("Satır ürünü")
-      .selectOption({ label: "UR-001 · Çalışma masası (Adet)" });
+      .getByRole("button", { name: "↓ Satıra Ekle", exact: true })
+      .click();
+    assert.equal(
+      await dlg.getByLabel("Satır ürünü", { exact: true }).inputValue(),
+      store.data.products[0].id,
+    );
     await dlg.getByLabel("Miktar", { exact: true }).fill("2");
     await dlg.getByLabel("Fatura tarihi").fill("2020-01-01");
     await dlg.getByLabel("Vade tarihi").fill("2020-01-02");
-    await dlg.getByRole("button", { name: "+ Ürün satırı ekle" }).click();
-    const second = dlg.locator(".invoice-line").nth(1);
+    await dlg
+      .getByRole("button", { name: "＋ Ürün / Hizmet Satırı Ekle" })
+      .click();
+    const second = dlg.locator(".sale-line").nth(1);
     await second
       .getByLabel("Satır ürünü")
       .selectOption({ label: "UR-001 · Çalışma masası (Adet)" });
@@ -329,7 +364,7 @@ const assert = require("node:assert/strict");
     await dlg
       .getByLabel("İşlem açıklaması / hizmet adı")
       .fill("Montaj hizmeti");
-    await dlg.getByLabel("KDV hariç tutar").fill("100");
+    await dlg.getByLabel("Birim fiyat", { exact: true }).fill("100");
     await dlg.getByLabel("Belge numarası").fill("BLG-24");
     await dlg.getByLabel("İşlem grubu").fill("Hizmet");
     await save("Faturayı kaydet");
@@ -430,10 +465,100 @@ const assert = require("node:assert/strict");
         ),
       true,
     );
+    // The new screenshot-style sales editor: multi-line service, FX, discounts and cash collection.
+    await openTransactionMenu();
+    await page
+      .getByRole("menuitem", {
+        name: "Stoksuz Satış / Hizmet Faturası",
+        exact: true,
+      })
+      .click();
+    await dlg.getByLabel("USD kuru", { exact: true }).fill("40");
+    await dlg.getByLabel("EUR kuru", { exact: true }).fill("45");
+    await dlg
+      .getByLabel("İşlem para birimi", { exact: true })
+      .selectOption("USD");
+    await dlg.getByLabel("Cari iskonto oranı", { exact: true }).fill("10");
+    await dlg.getByLabel("Plasiyer", { exact: true }).fill("Örnek Yetkili");
+    await dlg
+      .getByLabel("Belge açıklaması", { exact: true })
+      .fill("Dövizli peşin hizmet satışı");
+    const firstService = dlg.locator(".sale-line").first();
+    await firstService
+      .getByLabel("İşlem açıklaması / hizmet adı", { exact: true })
+      .fill("Kurulum hizmeti");
+    await firstService.getByLabel("Miktar", { exact: true }).fill("2");
+    await firstService.getByLabel("Birim fiyat", { exact: true }).fill("120");
+    await firstService.getByLabel("KDV dahil fiyat", { exact: true }).check();
+    await firstService.getByLabel("İskonto oranı", { exact: true }).fill("10");
+    await firstService.getByLabel("İskonto 2", { exact: true }).fill("5");
+    await firstService.getByLabel("İskonto 3", { exact: true }).fill("2");
+    await dlg
+      .getByRole("button", {
+        name: "＋ Ürün / Hizmet Satırı Ekle",
+        exact: true,
+      })
+      .click();
+    const secondService = dlg.locator(".sale-line").nth(1);
+    await secondService
+      .getByLabel("İşlem açıklaması / hizmet adı", { exact: true })
+      .fill("Sarf hizmeti");
+    await secondService.getByLabel("Birim fiyat", { exact: true }).fill("10");
+    await dlg.getByLabel("Peşin satış", { exact: true }).check();
+    await dlg
+      .getByLabel("Peşin kasa / banka", { exact: true })
+      .selectOption({ label: "Ana kasa" });
+    await dlg
+      .getByRole("button", { name: "EK BELGE YOK", exact: true })
+      .click();
+    await dlg
+      .getByRole("button", { name: "1 EK BELGE", exact: true })
+      .waitFor();
+    assert.equal(await dlg.locator("#sale-grand").textContent(), "7.671,46");
+    if (process.env.UI_SALES_SCREENSHOT_PATH) {
+      if (!desktop) await page.setViewportSize({ width: 1920, height: 1080 });
+      await page.screenshot({
+        path: process.env.UI_SALES_SCREENSHOT_PATH,
+        fullPage: true,
+      });
+    }
+    const beforeSave = store.data.invoices.length;
+    await page.keyboard.press("F6");
+    await dlg.getByText("✓ KAYDEDİLDİ", { exact: true }).waitFor();
+    assert.equal(await dlg.isVisible(), true);
+    assert.equal(
+      await firstService
+        .getByLabel("Birim fiyat", { exact: true })
+        .isDisabled(),
+      true,
+    );
+    const advanced = store.data.invoices.at(-1);
+    assert.equal(advanced.amount, 767146);
+    assert.equal(advanced.serviceLines.length, 2);
+    assert.equal(D.paid(store.data, advanced.id), 767146);
+    assert.equal(D.balance(store.data, c.id), 500);
+    assert.equal(advanced.attachments[0].base64, pdf.toString("base64"));
+    await page.keyboard.press("F6");
+    await page.keyboard.press("F8");
+    await dlg.waitFor({ state: "hidden" });
+    assert.equal(store.data.invoices.length, beforeSave + 1);
+    await page.getByRole("tab", { name: "Faturalar", exact: true }).click();
+    await page
+      .getByRole("button", { name: advanced.number, exact: true })
+      .click();
+    await dlg
+      .getByRole("cell", { name: "Kurulum hizmeti", exact: true })
+      .waitFor();
+    await dlg
+      .getByRole("button", { name: "▤ ornek-fatura.pdf", exact: true })
+      .waitFor();
+    await dlg
+      .getByRole("button", { name: "Pencereyi kapat", exact: true })
+      .click();
     assert.deepEqual(errors, []);
     console.log(
       (desktop ? "ELECTRON" : "BROWSER") +
-        " UI PASS: cari açma/düzenleme/arama, çok satırlı iskonto+KDV, satış/alış stokları, kısmi/tam tahsilat, fazla ödeme engeli, tedarikçi ödeme, ekstre, klasik işlem menüsü, stoksuz satış, süzgeç, açılır fatura satırları, bakiye kontrolü ve yeniden açılış.",
+        " UI PASS: cari açma/düzenleme/arama, çok satırlı iskonto+KDV, satış/alış stokları, kısmi/tam tahsilat, fazla ödeme engeli, tedarikçi ödeme, ekstre, klasik işlem menüsü, stoksuz satış, süzgeç, açılır fatura satırları, bakiye kontrolü, döviz/KDV dahil/çoklu iskonto, peşin satış, ek belge ve F6/F8.",
     );
   } finally {
     if (desktop) await desktop.close();

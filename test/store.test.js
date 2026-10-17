@@ -513,3 +513,218 @@ test("CSV dışa aktarımı Türkçe başlık, süzgeç ve formül/alıntı kaç
     1,
   );
 });
+
+test("Cari ve üç satır iskontosu sırayla uygulanır; KDV dahil fiyat ayrıştırılır", () => {
+  const l = D.line({
+    quantity: "2",
+    unitPrice: "120",
+    currency: "USD",
+    exchangeRate: "40",
+    vatRate: "20",
+    vatIncluded: true,
+    contactDiscount: "10",
+    discount: "10",
+    discount2: "5",
+    discount3: "2",
+  });
+  assert.equal(l.unitPriceTL, 480000);
+  assert.equal(l.gross, 800000);
+  assert.equal(l.subtotal, 603288);
+  assert.equal(l.vatAmount, 120658);
+  assert.equal(l.amount, 723946);
+  assert.equal(l.discountAmount, 196712);
+  assert.equal(l.subtotal + l.vatAmount, l.amount);
+  assert.equal(l.gross - l.discountAmount, l.subtotal);
+});
+test("Döviz kuru pozitif ve en fazla altı ondalık olmalı; tek sayılı bölenle fiyat çevrimi", () => {
+  assert.equal(D.exchangeRate("49,443333"), 49443333);
+  for (const rate of ["0", "-1", "1.0000001", "NaN"])
+    assert.throws(() =>
+      D.line({
+        quantity: "1",
+        unitPrice: "1",
+        currency: "EUR",
+        exchangeRate: rate,
+      }),
+    );
+  assert.equal(D.convertPrice(100, 1000000, 49443333), 2);
+  assert.throws(() =>
+    D.line({
+      quantity: "1",
+      unitPrice: "1",
+      currency: "GBP",
+      exchangeRate: "1",
+    }),
+  );
+});
+test("Çok satırlı stoksuz peşin satış faturası ile tahsilat tek kayıtta kalıcılaşır", (t) => {
+  const s = setup(t),
+    c = contact(s),
+    a = account(s);
+  s.add("invoices", {
+    number: "PES-1",
+    description: "Hizmetler",
+    date: "2026-10-17",
+    dueDate: "2026-10-17",
+    contactId: c.id,
+    type: "sale",
+    stockless: true,
+    cashSale: true,
+    cashAccountId: a.id,
+    contactDiscount: "10",
+    currency: "USD",
+    exchangeRates: { USD: "40" },
+    salesperson: "Örnek Yetkili",
+    lines: [
+      {
+        name: "Kurulum",
+        unit: "Saat",
+        quantity: "2",
+        unitPrice: "120",
+        vatRate: "20",
+        vatIncluded: true,
+        discount: "10",
+        discount2: "5",
+        discount3: "2",
+      },
+      { name: "Sarf", quantity: "1", unitPrice: "10", vatRate: "20" },
+    ],
+  });
+  const i = s.data.invoices[0];
+  assert.equal(i.amount, 767146);
+  assert.equal(i.serviceLines.length, 2);
+  assert.equal(i.salesperson, "Örnek Yetkili");
+  assert.equal(s.data.transactions.length, 1);
+  assert.equal(D.paid(s.data, i.id), i.amount);
+  assert.equal(D.balance(s.data, c.id), 0);
+  assert.equal(s.data.transactions[0].amount, 767146);
+  assert.equal(new Store(s.file).data.invoices[0].exchangeRates.USD, 40000000);
+});
+test("Peşin alış kasa çıkışı oluşturur; geçersiz hesapta fatura veya stok yazılmaz", (t) => {
+  const s = setup(t),
+    c = contact(s),
+    p = product(s),
+    a = account(s),
+    before = fs.readFileSync(s.file, "utf8");
+  assert.throws(
+    () => invoice(s, c, p, { cashSale: true, cashAccountId: "missing" }),
+    /kasa/,
+  );
+  assert.equal(fs.readFileSync(s.file, "utf8"), before);
+  assert.equal(D.stock(s.data, p.id), 10000);
+  const i = invoice(s, c, p, {
+    type: "purchase",
+    cashSale: true,
+    cashAccountId: a.id,
+  });
+  assert.equal(s.data.transactions[0].type, "expense");
+  assert.equal(D.paid(s.data, i.id), 24000);
+  assert.equal(D.balance(s.data, c.id), 0);
+  assert.equal(D.stock(s.data, p.id), 12000);
+});
+test("Karma para biriminde kur anlık değerleri sabitlenir; eksik kur kaydı engeller", (t) => {
+  const s = setup(t),
+    c = contact(s);
+  const input = {
+    number: "KUR-1",
+    description: "Karma",
+    date: "2026-10-17",
+    type: "sale",
+    contactId: c.id,
+    stockless: true,
+    fixedCurrency: false,
+    currency: "TL",
+    exchangeRates: { USD: "40", EUR: "45" },
+    lines: [
+      {
+        name: "Dolar hizmet",
+        quantity: "1",
+        unitPrice: "10",
+        vatRate: "0",
+        currency: "USD",
+      },
+      {
+        name: "Euro hizmet",
+        quantity: "1",
+        unitPrice: "10",
+        vatRate: "20",
+        currency: "EUR",
+      },
+    ],
+  };
+  s.add("invoices", input);
+  assert.equal(s.data.invoices[0].amount, 94000);
+  assert.deepEqual(
+    D.invoiceLines(s.data.invoices[0]).map((l) => l.currency),
+    ["USD", "EUR"],
+  );
+  assert.throws(
+    () =>
+      s.add("invoices", {
+        ...input,
+        number: "KUR-2",
+        exchangeRates: { USD: "40" },
+      }),
+    /kur/,
+  );
+  assert.equal(s.data.invoices.length, 1);
+});
+test("Ek PDF JSON yedeğine dahil olur ve bozuk/uygunsuz dosya kaydı engellenir", (t) => {
+  const s = setup(t),
+    c = contact(s),
+    pdf = Buffer.from("%PDF-1.4\nörnek belge").toString("base64");
+  const input = {
+    number: "EK-1",
+    description: "Ekli fatura",
+    date: "2026-10-17",
+    type: "sale",
+    contactId: c.id,
+    stockless: true,
+    netAmount: "100",
+    attachments: [{ name: "ornek.pdf", base64: pdf }],
+  };
+  s.add("invoices", input);
+  assert.equal(new Store(s.file).data.invoices[0].attachments[0].base64, pdf);
+  assert.ok(s.data.invoices[0].attachments[0].id);
+  for (const attachment of [
+    { name: "x.exe", base64: pdf },
+    { name: "x.pdf", base64: Buffer.from("not pdf").toString("base64") },
+    { name: "../x.pdf", base64: pdf },
+  ])
+    assert.throws(() =>
+      s.add("invoices", {
+        ...input,
+        number: "EK-2",
+        attachments: [attachment],
+      }),
+    );
+  assert.equal(s.data.invoices.length, 1);
+});
+test("Barkod ve cari kartı iskonto bilgileri saklanır; barkod başka kartta yinelenmez", (t) => {
+  const s = setup(t),
+    c = contact(s, "customer", { discount: "5" }),
+    p = product(s);
+  s.update("products", p.id, {
+    code: p.code,
+    name: p.name,
+    unit: p.unit,
+    barcode: "869000123",
+    specialCode: "MASA",
+    salePrice: "100",
+    purchasePrice: "50",
+    vatRate: "20",
+    openingStock: "10",
+  });
+  assert.equal(s.data.contacts[0].discountBps, 500);
+  assert.equal(s.data.products[0].barcode, "869000123");
+  assert.throws(
+    () =>
+      s.add("products", {
+        code: "DIĞER",
+        name: "Diğer",
+        unit: "Adet",
+        barcode: "869000123",
+      }),
+    /Barkod/,
+  );
+});

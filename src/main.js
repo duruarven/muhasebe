@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { Store } = require("./store");
 const D = require("./domain");
+const { randomUUID } = require("node:crypto");
+const { normalizeAttachments, LIMIT } = require("./attachments");
+app.commandLine.appendSwitch("lang", "tr-TR");
 let store;
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
@@ -71,6 +74,47 @@ app.whenReady().then(() => {
         );
       }),
   );
+  handle("data:pick-attachments", async () => {
+    const selection = await dialog.showOpenDialog({
+      title: "Ek belge seçin (PDF / resim, en fazla 2 MB)",
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        { name: "PDF ve resim", extensions: ["pdf", "png", "jpg", "jpeg"] },
+      ],
+    });
+    if (selection.canceled) return [];
+    if (selection.filePaths.length > 5) throw Error("En fazla 5 belge seçin.");
+    return normalizeAttachments(
+      selection.filePaths.map((file) => {
+        const info = fs.statSync(file);
+        if (!info.isFile() || info.size > LIMIT)
+          throw Error("Belge başına en fazla 2 MB eklenebilir.");
+        return {
+          name: path.basename(file),
+          base64: fs.readFileSync(file).toString("base64"),
+        };
+      }),
+    );
+  });
+  handle("data:open-attachment", async (invoiceId, attachmentId) => {
+    const invoice = store.data.invoices.find((i) => i.id === invoiceId);
+    const attachment = invoice?.attachments?.find((a) => a.id === attachmentId);
+    if (!attachment) throw Error("Ek belge bulunamadı.");
+    const [checked] = normalizeAttachments([attachment]);
+    const dir = path.join(app.getPath("temp"), "isletmem-belgeler");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(
+      dir,
+      randomUUID() + path.extname(checked.name).toLowerCase(),
+    );
+    fs.writeFileSync(file, Buffer.from(checked.base64, "base64"), {
+      mode: 0o600,
+      flag: "wx",
+    });
+    const error = await shell.openPath(file);
+    if (error) throw Error(error);
+    return null;
+  });
   handle("data:export-ledger", async (contactId, filters) => {
     const contact = store.contact(contactId);
     const filename = (contact.code || contact.name)

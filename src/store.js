@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const D = require("./domain");
+const { normalizeAttachments } = require("./attachments");
 const kinds = ["contacts", "accounts", "transactions", "invoices", "products"];
 const empty = () => ({
   version: 2,
@@ -98,6 +99,9 @@ class Store {
       Object.assign(row, {
         name: text(input.name, "Cari unvanı"),
         type: input.type,
+        discountBps: D.rate(
+          input.discount ?? String((old?.discountBps || 0) / 100),
+        ),
       });
       if (!["customer", "supplier", "both"].includes(row.type))
         throw Error("Cari türü geçersiz.");
@@ -145,7 +149,16 @@ class Store {
         salePrice: D.money(input.salePrice || "0", true),
         vatBps: D.rate(input.vatRate ?? "20"),
         openingStock: D.quantity(input.openingStock || "0", true),
+        barcode: text(input.barcode, "Barkod", true),
+        specialCode: text(input.specialCode, "Özel kod", true),
       });
+      if (
+        row.barcode &&
+        this.data.products.some(
+          (p) => p.id !== row.id && p.barcode === row.barcode,
+        )
+      )
+        throw Error("Barkod başka bir ürün kartında kullanılıyor.");
       if (
         old &&
         old.unit !== row.unit &&
@@ -228,19 +241,61 @@ class Store {
         text(input.receiptNo, "Fiş numarası", true) ||
         `${row.type === "sale" ? "SF" : "AF"}-${String(row.entryNo).padStart(5, "0")}`;
       row.stockless = input.stockless === true;
+      row.currency = input.currency || "TL";
+      if (!["TL", "USD", "EUR"].includes(row.currency))
+        throw Error("Para birimi geçersiz.");
+      row.fixedCurrency = input.fixedCurrency !== false;
+      row.contactDiscountBps = D.rate(input.contactDiscount ?? "0");
+      row.salesperson = text(input.salesperson, "Plasiyer", true);
+      row.attachments = normalizeAttachments(input.attachments || []);
+      row.exchangeRates = { TL: 1000000 };
+      for (const currency of ["USD", "EUR"])
+        if (
+          input.exchangeRates?.[currency] != null &&
+          input.exchangeRates[currency] !== ""
+        )
+          row.exchangeRates[currency] = D.exchangeRate(
+            input.exchangeRates[currency],
+          );
+      const calculate = (item) => {
+        const currency = row.fixedCurrency
+          ? row.currency
+          : item.currency || row.currency;
+        return D.line({
+          ...item,
+          currency,
+          exchangeRate:
+            row.exchangeRates[currency] == null
+              ? undefined
+              : String(row.exchangeRates[currency] / 1000000),
+          contactDiscount: String(row.contactDiscountBps / 100),
+        });
+      };
       if (row.stockless) {
         if (input.items?.length)
-          throw Error("Stoksuz faturaya ürün satırı eklenemez.");
-        row.items = [];
-        row.serviceLine = {
-          name: row.description,
-          ...D.line({
+          throw Error("Stoksuz faturaya stok kalemi eklenemez.");
+        const source = input.lines || [
+          {
+            name: row.description,
             quantity: "1",
             unitPrice: input.netAmount,
             vatRate: input.vatRate ?? "20",
             discount: input.discount ?? "0",
-          }),
-        };
+          },
+        ];
+        if (!Array.isArray(source) || !source.length || source.length > 100)
+          throw Error("1–100 ürün/hizmet satırı girin.");
+        row.items = [];
+        row.serviceLines = source.map((item) => ({
+          name: text(item.name, "Ürün / hizmet adı"),
+          code: text(item.code, "Kod", true),
+          barcode: text(item.barcode, "Barkod", true),
+          specialCode: text(item.specialCode, "Özel kod", true),
+          unit: text(item.unit || "Hizmet", "Birim"),
+          ...calculate(item),
+        }));
+        if (row.serviceLines.length === 1)
+          row.serviceLine = row.serviceLines[0];
       } else {
         if (
           !Array.isArray(input.items) ||
@@ -255,13 +310,21 @@ class Store {
             productId: p.id,
             name: p.name,
             code: p.code,
+            barcode: p.barcode || "",
+            specialCode: p.specialCode || "",
             unit: p.unit,
-            ...D.line(item),
+            ...calculate(item),
           };
         });
       }
-      const lines = row.stockless ? [row.serviceLine] : row.items;
-      for (const field of ["subtotal", "vatAmount", "discountAmount", "amount"])
+      const lines = D.invoiceLines(row);
+      for (const field of [
+        "gross",
+        "subtotal",
+        "vatAmount",
+        "discountAmount",
+        "amount",
+      ])
         row[field] = lines.reduce((s, item) => D.safe(s + item[field]), 0);
       if (row.amount <= 0) throw Error("Fatura toplamı sıfırdan büyük olmalı.");
     } else throw Error("Kayıt türü geçersiz.");
@@ -269,7 +332,31 @@ class Store {
   }
   add(kind, input) {
     const row = this.prepare(kind, input);
-    this.save({ ...this.data, [kind]: [...this.data[kind], row] });
+    let next = { ...this.data, [kind]: [...this.data[kind], row] };
+    if (kind === "invoices" && input.cashSale === true) {
+      const accountId = input.cashAccountId;
+      if (!this.data.accounts.some((a) => a.id === accountId))
+        throw Error("Peşin işlem için kasa / banka hesabı seçin.");
+      row.cashSale = true;
+      const transaction = {
+        id: randomUUID(),
+        createdAt: row.createdAt,
+        entryNo: row.entryNo + 1,
+        description: `${row.number} peşin ${row.type === "sale" ? "satış tahsilatı" : "alış ödemesi"}`,
+        date: row.date,
+        amount: row.amount,
+        type: row.type === "sale" ? "income" : "expense",
+        accountId,
+        contactId: row.contactId,
+        invoiceId: row.id,
+        receiptNo: `PES-${String(row.entryNo + 1).padStart(5, "0")}`,
+        documentNo: row.documentNo,
+        group: row.group,
+        deliveryNo: "",
+      };
+      next = { ...next, transactions: [...next.transactions, transaction] };
+    }
+    this.save(next);
     return this.data;
   }
   update(kind, id, input) {
