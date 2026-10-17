@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
 const { Store } = require('./store');
 let store;
 const primary = app.requestSingleInstanceLock();
@@ -10,9 +11,10 @@ app.on('second-instance', () => {
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
 function window() {
-  const win = new BrowserWindow({ width: 1240, height: 850, minWidth: 940, minHeight: 680, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  const win = new BrowserWindow({ width: 1440, height: 960, minWidth: 1100, minHeight: 720, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', e => e.preventDefault());
+  const trustedPage = pathToFileURL(path.join(__dirname, 'index.html')).href;
+  win.webContents.on('will-navigate', (event, url) => { if (url !== trustedPage) event.preventDefault(); });
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, 'index.html'));
 }
@@ -26,7 +28,11 @@ app.whenReady().then(() => {
   });
   handle('data:read', () => store.data);
   handle('data:add', (kind, input) => store.add(kind, input));
+  handle('data:update', (kind, id, input) => store.update(kind, id, input));
   handle('data:remove', (kind, id) => store.remove(kind, id));
+  ipcMain.handle('data:print', (event) => new Promise(resolve => {
+    event.sender.print({ silent: false, printBackground: true }, (ok, reason) => resolve(ok ? { ok: true } : { ok: false, error: reason || 'Yazdırma iptal edildi.' }));
+  }));
   handle('data:backup', async () => {
     const result = await dialog.showSaveDialog({ title: 'Yedeği kaydet', defaultPath: `muhasebe-yedek-${new Date().toISOString().slice(0,10)}.json`, filters: [{name:'JSON yedek', extensions:['json']}] });
     if (result.canceled) return null;

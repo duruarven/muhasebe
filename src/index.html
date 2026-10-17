@@ -1,4 +1,32 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'"><title>İşletmem Muhasebe</title><link rel="stylesheet" href="style.css"></head><body>
-<aside><div class="brand">İ<span>şletmem</span><small>ÖN MUHASEBE</small></div><nav><button data-view="overview" class="active">Genel bakış</button><button data-view="transactions">Gelir & gider</button><button data-view="contacts">Müşteri & tedarikçi</button><button data-view="invoices">Fatura kayıtları</button><button data-view="accounts">Kasa & banka</button></nav><div class="local">● Yerel çalışma<br><small>Verileriniz bu bilgisayarda saklanır.</small></div><button id="backup">Yedek al ↓</button></aside>
-<main><header><div><p>İŞLETMENİZİN FİNANSAL GÖRÜNÜMÜ</p><h1 id="title">Genel bakış</h1></div><span id="today"></span></header><div id="notice" role="status" aria-live="polite"></div><section id="summary"></section><section id="content"></section><footer>Tüm tutarlar Türk lirasıdır. Fatura kayıtları resmi e-Fatura/e-Arşiv belgesi oluşturmaz. Faturalar kasa bakiyesini otomatik değiştirmez; tahsilat ve ödemeleri gelir-gider bölümüne ayrıca girin.</footer></main>
-<script src="renderer.js"></script></body></html>
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'">
+  <title>İşletmem Muhasebe</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">İ</div><div>işletmem<small>MUHASEBE & TİCARET</small></div></div>
+    <div class="nav-caption">ÇALIŞMA ALANI</div>
+    <nav aria-label="Ana menü">
+      <button data-view="overview" class="active"><span>◫</span> Genel bakış</button>
+      <button data-view="contacts"><span>◎</span> Cari hesaplar</button>
+      <button data-view="products"><span>▦</span> Ürün & stok</button>
+      <button data-view="invoices"><span>▤</span> Faturalar</button>
+      <button data-view="transactions"><span>⇄</span> Tahsilat & ödeme</button>
+      <button data-view="accounts"><span>▣</span> Kasa & banka</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="local"><i></i> Veriler bu bilgisayarda<small>Yerel çalışma · Türk lirası</small></div><button id="backup" class="backup">↓ &nbsp; Verilerimi yedekle</button><span class="version">İşletmem · Sürüm 0.2.0</span></div>
+  </aside>
+  <main>
+    <div class="topbar"><span>İŞLETMEM <span class="muted">/</span> ÖN MUHASEBE</span><span id="today"></span></div>
+    <header><div><p id="eyebrow">İŞLETMENİZİN FİNANSAL GÖRÜNÜMÜ</p><h1 id="title">Genel bakış</h1><p id="subtitle"></p></div><div id="page-actions" class="actions"></div></header>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <section id="summary" class="summary"></section>
+    <section id="content"></section>
+    <footer>İşletmem Ön Muhasebe · İç takip amaçlıdır. Fatura kayıtları resmi e-Fatura/e-Arşiv belgesi değildir.</footer>
+  </main>
+  <dialog id="modal" aria-labelledby="modal-title"><div class="modal-header"><div><p id="modal-kicker">YENİ KAYIT</p><h2 id="modal-title"></h2></div><button id="modal-close" class="icon-button" aria-label="Pencereyi kapat">✕</button></div><div id="modal-body"></div><div id="modal-error" role="alert"></div></dialog>
+  <script src="domain.js"></script><script src="renderer.js"></script>
+</body></html>
